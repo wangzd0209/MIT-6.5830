@@ -25,7 +25,7 @@ public class CatalogTest extends SimpleDbTestBase {
     private static final int id1 = r.nextInt();
     private static final int id2 = r.nextInt();
 	private String nameThisTestRun;
-    
+
     @Before public void addTables() {
         Database.getCatalog().clear();
 		nameThisTestRun = SystemTestUtil.getUUID();
@@ -39,7 +39,6 @@ public class CatalogTest extends SimpleDbTestBase {
     @Test public void getTupleDesc() {
         TupleDesc expected = Utility.getTupleDesc(2);
         TupleDesc actual = Database.getCatalog().getTupleDesc(id1);
-
         assertEquals(expected, actual);
     }
 
@@ -49,14 +48,14 @@ public class CatalogTest extends SimpleDbTestBase {
     @Test public void getTableId() {
         assertEquals(id2, Database.getCatalog().getTableId(name));
         assertEquals(id1, Database.getCatalog().getTableId(nameThisTestRun));
-        
+
         try {
             Database.getCatalog().getTableId(null);
             Assert.fail("Should not find table with null name");
         } catch (NoSuchElementException e) {
             // Expected to get here
         }
-        
+
         try {
             Database.getCatalog().getTableId("foo");
             Assert.fail("Should not find table with name foo");
@@ -76,7 +75,7 @@ public class CatalogTest extends SimpleDbTestBase {
         // rely on HeapFileTest for that. perform some basic checks.
         assertEquals(id1, f.getId());
     }
-    
+
     /**
      * Check that duplicate names are handled correctly
      */
@@ -85,7 +84,7 @@ public class CatalogTest extends SimpleDbTestBase {
     	Database.getCatalog().addTable(new SkeletonFile(id3, Utility.getTupleDesc(2)), name);
     	assertEquals(id3, Database.getCatalog().getTableId(name));
     }
-    
+
     /**
      * Check that duplicate file ids are handled correctly
      */

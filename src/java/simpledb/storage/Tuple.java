@@ -1,6 +1,7 @@
 package simpledb.storage;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 
@@ -13,6 +14,10 @@ public class Tuple implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    public TupleDesc desc;
+    public ArrayList<Field> fields;
+    public RecordId recordId;
+
     /**
      * Create a new tuple with the specified schema (type).
      *
@@ -21,15 +26,19 @@ public class Tuple implements Serializable {
      *            instance with at least one field.
      */
     public Tuple(TupleDesc td) {
-        // some code goes here
+        //这里给tuple一个属性tupleDes
+        this.desc = td;
+        this.fields = new ArrayList();
+        for (int i = 0; i < td.numFields(); i++){
+            fields.add(null);
+        }
     }
 
     /**
      * @return The TupleDesc representing the schema of this tuple.
      */
     public TupleDesc getTupleDesc() {
-        // some code goes here
-        return null;
+        return this.desc;
     }
 
     /**
@@ -37,8 +46,7 @@ public class Tuple implements Serializable {
      *         be null.
      */
     public RecordId getRecordId() {
-        // some code goes here
-        return null;
+        return this.recordId;
     }
 
     /**
@@ -48,7 +56,7 @@ public class Tuple implements Serializable {
      *            the new RecordId for this tuple.
      */
     public void setRecordId(RecordId rid) {
-        // some code goes here
+        this.recordId = rid;
     }
 
     /**
@@ -60,7 +68,7 @@ public class Tuple implements Serializable {
      *            new value for the field.
      */
     public void setField(int i, Field f) {
-        // some code goes here
+        fields.set(i, f);
     }
 
     /**
@@ -70,8 +78,7 @@ public class Tuple implements Serializable {
      *            field index to return. Must be a valid index.
      */
     public Field getField(int i) {
-        // some code goes here
-        return null;
+        return fields.get(i);
     }
 
     /**
@@ -83,7 +90,6 @@ public class Tuple implements Serializable {
      * where \t is any whitespace (except a newline)
      */
     public String toString() {
-        // some code goes here
         throw new UnsupportedOperationException("Implement this");
     }
 
