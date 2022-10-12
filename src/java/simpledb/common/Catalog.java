@@ -19,9 +19,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class Catalog {
 
-    //需要我自己设计Table
-    //属性：Dbfile， name，pkeyField
-
     private final ConcurrentHashMap<Integer, Table> map;
 
     private static class Table implements Serializable{

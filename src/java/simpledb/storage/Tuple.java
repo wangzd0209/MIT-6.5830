@@ -90,7 +90,12 @@ public class Tuple implements Serializable {
      * where \t is any whitespace (except a newline)
      */
     public String toString() {
-        throw new UnsupportedOperationException("Implement this");
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < desc.numFields() - 1; i++){
+            sb.append(fields.get(i).toString()).append(" ");
+        }
+        sb.append(fields.get(desc.numFields() - 1).toString()).append("\n");
+        return sb.toString();
     }
 
     /**
@@ -108,6 +113,6 @@ public class Tuple implements Serializable {
      * */
     public void resetTupleDesc(TupleDesc td)
     {
-        // some code goes here
+        this.desc = td;
     }
 }

@@ -47,7 +47,6 @@ public class SeqScan implements OpIterator {
         this.tableAlias = tableAlias;
         this.tid = tid;
         this.tableid = tableid;
-        this.dbFileIterator = Database.getCatalog().getDatabaseFile(tableid).iterator(tid);
     }
 
     /**
@@ -56,7 +55,7 @@ public class SeqScan implements OpIterator {
      *       be the actual name of the table in the catalog of the database
      * */
     public String getTableName() {
-        return null;
+        return Database.getCatalog().getTableName(tableid);
     }
 
     /**
@@ -80,7 +79,8 @@ public class SeqScan implements OpIterator {
      *            tableAlias.null, or null.null).
      */
     public void reset(int tableid, String tableAlias) {
-        // some code goes here
+        this.tableid = tableid;
+        this.tableAlias = tableAlias;
     }
 
     public SeqScan(TransactionId tid, int tableId) {
@@ -88,6 +88,7 @@ public class SeqScan implements OpIterator {
     }
 
     public void open() throws DbException, TransactionAbortedException {
+        this.dbFileIterator = Database.getCatalog().getDatabaseFile(tableid).iterator(tid);
         dbFileIterator.open();
     }
 
@@ -113,13 +114,17 @@ public class SeqScan implements OpIterator {
     }
 
     public boolean hasNext() throws TransactionAbortedException, DbException {
-        // some code goes here
+        if(dbFileIterator == null){
+            return false;
+        }
         return dbFileIterator.hasNext();
     }
 
     public Tuple next() throws NoSuchElementException,
             TransactionAbortedException, DbException {
-        // some code goes here
+        if(dbFileIterator == null){
+            throw new NoSuchElementException("no next tuple");
+        }
         return dbFileIterator.next();
     }
 
