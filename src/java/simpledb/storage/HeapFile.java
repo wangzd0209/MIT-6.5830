@@ -158,16 +158,17 @@ public class HeapFile implements DbFile {
         HeapFile file;
         HeapPage heapPage;
         Iterator<Tuple> it = null;
-        int currentPageNo = 0;
+        int currentPageNo;
 
         public HeapFileIterator(TransactionId tid, HeapFile file){
             this.file = file;
             this.tid = tid;
+            this.currentPageNo = 0;
         }
 
         @Override
         public void open() throws DbException, TransactionAbortedException {
-            this.heapPage = (HeapPage) Database.getBufferPool().getPage(this.tid, new HeapPageId(file.getId(), currentPageNo), Permissions.READ_ONLY);
+            this.heapPage = (HeapPage) Database.getBufferPool().getPage(this.tid, new HeapPageId(file.getId(), 0), Permissions.READ_ONLY);
             it = heapPage.iterator();
         }
 
@@ -197,6 +198,7 @@ public class HeapFile implements DbFile {
         @Override
         public void rewind() throws DbException, TransactionAbortedException {
             close();
+            currentPageNo = 0;
             open();
         }
 

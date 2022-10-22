@@ -42,7 +42,6 @@ public class Catalog {
      * Creates a new, empty catalog.
      */
     public Catalog() {
-        // some code goes here
         this.map = new ConcurrentHashMap<>();
     }
 
@@ -129,8 +128,7 @@ public class Catalog {
     }
 
     public String getPrimaryKey(int tableid) {
-        // some code goes here
-        return null;
+        return map.get(tableid).pkeyField;
     }
 
     public Iterator<Integer> tableIdIterator() {

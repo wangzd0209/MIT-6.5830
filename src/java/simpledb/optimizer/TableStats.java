@@ -1,12 +1,16 @@
 package simpledb.optimizer;
 
 import simpledb.common.Database;
+import simpledb.common.DbException;
 import simpledb.common.Type;
 import simpledb.execution.Predicate;
 import simpledb.execution.SeqScan;
 import simpledb.storage.*;
 import simpledb.transaction.Transaction;
+import simpledb.transaction.TransactionAbortedException;
+import simpledb.transaction.TransactionId;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -15,8 +19,8 @@ import java.util.concurrent.ConcurrentMap;
 
 /**
  * TableStats represents statistics (e.g., histograms) about base tables in a
- * query. 
- * 
+ * query.
+ *
  * This class is not needed in implementing lab1 and lab2.
  */
 public class TableStats {
@@ -32,7 +36,7 @@ public class TableStats {
     public static void setTableStats(String tablename, TableStats stats) {
         statsMap.put(tablename, stats);
     }
-    
+
     public static void setStatsMap(Map<String,TableStats> s)
     {
         try {
@@ -61,17 +65,24 @@ public class TableStats {
         System.out.println("Done.");
     }
 
+    private DbFile dbFile;
+    private int ioCostPerPage;
+    private int ntups;
+    private Map<Integer, IntHistogram> intHistogramMap;
+    private Map<Integer, StringHistogram> stringHistogramMap;
+    private TupleDesc td;
+
     /**
      * Number of bins for the histogram. Feel free to increase this value over
      * 100, though our tests assume that you have at least 100 bins in your
      * histograms.
      */
-    static final int NUM_HIST_BINS = 100;
+    static final int NUM_HIST_BINS = 10000;
 
     /**
      * Create a new TableStats object, that keeps track of statistics on each
      * column of a table
-     * 
+     *
      * @param tableid
      *            The table over which to compute statistics
      * @param ioCostPerPage
@@ -87,37 +98,107 @@ public class TableStats {
         // necessarily have to (for example) do everything
         // in a single scan of the table.
         // some code goes here
+
+        this.ntups = 0;
+        this.dbFile = Database.getCatalog().getDatabaseFile(tableid);
+        this.ioCostPerPage = ioCostPerPage;
+        this.intHistogramMap = new HashMap<>();
+        this.stringHistogramMap = new HashMap<>();
+
+        this.td = dbFile.getTupleDesc();
+        int numFiled = td.numFields();
+
+        int[] maxs = new int[numFiled];
+        int[] mins = new int[numFiled];
+        Arrays.fill(maxs, Integer.MIN_VALUE);
+        Arrays.fill(mins, Integer.MAX_VALUE);
+
+        //新建一个
+        SeqScan seqScan = new SeqScan(new TransactionId(), tableid);
+        Tuple tuple;
+        try {
+            seqScan.open();
+            while (seqScan.hasNext()){
+                ntups++;
+                tuple = seqScan.next();
+
+                for (int i = 0; i < numFiled; i++){
+                    if(td.getFieldType(i) == Type.STRING_TYPE)
+                        continue;
+                    int value = tuple.getField(i).hashCode();
+                    mins[i] = Math.min(mins[i], value);
+                    maxs[i] = Math.max(maxs[i], value);
+                }
+            }
+
+            for (int i = 0; i < numFiled; i++){
+                switch (td.getFieldType(i)){
+                    case INT_TYPE:
+                        intHistogramMap.put(i,new IntHistogram(NUM_HIST_BINS, mins[i], maxs[i]));
+                        break;
+                    case STRING_TYPE:
+                        stringHistogramMap.put(i,new StringHistogram(NUM_HIST_BINS));
+                        break;
+                    default:
+                        throw new UnsupportedOperationException("unknown type");
+                }
+            }
+
+            seqScan.rewind();
+            while (seqScan.hasNext()){
+                tuple = seqScan.next();
+                for (int i = 0; i < numFiled; i++){
+                    switch (td.getFieldType(i)){
+                        case INT_TYPE:
+                            intHistogramMap.get(i).addValue(((IntField)tuple.getField(i)).getValue());
+                            break;
+                        case STRING_TYPE:
+                            stringHistogramMap.get(i).addValue(((StringField)tuple.getField(i)).getValue());
+                            break;
+                        default:
+                            throw new UnsupportedOperationException("unknown type");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.out.println(e);
+        }finally {
+            seqScan.close();
+        }
     }
 
     /**
      * Estimates the cost of sequentially scanning the file, given that the cost
      * to read a page is costPerPageIO. You can assume that there are no seeks
      * and that no pages are in the buffer pool.
-     * 
+     *
      * Also, assume that your hard drive can only read entire pages at once, so
      * if the last page of the table only has one tuple on it, it's just as
      * expensive to read as a full page. (Most real hard drives can't
      * efficiently address regions smaller than a page at a time.)
-     * 
+     *
      * @return The estimated cost of scanning the table.
      */
     public double estimateScanCost() {
-        // some code goes here
-        return 0;
+        if (dbFile instanceof HeapFile){
+            HeapFile heapFile = (HeapFile) dbFile;
+            return heapFile.numPages() * ioCostPerPage;
+        }else{
+            throw new UnsupportedOperationException("file type unsupported");
+        }
     }
 
     /**
      * This method returns the number of tuples in the relation, given that a
      * predicate with selectivity selectivityFactor is applied.
-     * 
+     *
      * @param selectivityFactor
      *            The selectivity of any predicates over the table
      * @return The estimated cardinality of the scan with the specified
      *         selectivityFactor
      */
     public int estimateTableCardinality(double selectivityFactor) {
-        // some code goes here
-        return 0;
+        return (int) (ntups * selectivityFactor);
     }
 
     /**
@@ -138,7 +219,7 @@ public class TableStats {
     /**
      * Estimate the selectivity of predicate <tt>field op constant</tt> on the
      * table.
-     * 
+     *
      * @param field
      *            The field over which the predicate ranges
      * @param op
@@ -149,16 +230,25 @@ public class TableStats {
      *         predicate
      */
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
-        // some code goes here
-        return 1.0;
+        double res = 0;
+        switch (this.td.getFieldType(field)){
+            case INT_TYPE:
+                res = intHistogramMap.get(field).estimateSelectivity(op, ((IntField) constant).getValue());
+                break;
+            case STRING_TYPE:
+                res = stringHistogramMap.get(field).estimateSelectivity(op, ((StringField) constant).getValue());
+                break;
+            default:
+                throw new UnsupportedOperationException("unknown type");
+        }
+        return res;
     }
 
     /**
      * return the total number of tuples in this table
      * */
     public int totalTuples() {
-        // some code goes here
-        return 0;
+        return this.ntups;
     }
 
 }

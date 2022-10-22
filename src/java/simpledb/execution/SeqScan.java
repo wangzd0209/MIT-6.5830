@@ -129,13 +129,11 @@ public class SeqScan implements OpIterator {
     }
 
     public void close() {
-        // some code goes here
         dbFileIterator.close();
     }
 
     public void rewind() throws DbException, NoSuchElementException,
             TransactionAbortedException {
-        // some code goes here
         dbFileIterator.rewind();
     }
 }
