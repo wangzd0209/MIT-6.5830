@@ -4,6 +4,10 @@ import simpledb.common.Database;
 import simpledb.common.Permissions;
 import simpledb.common.DbException;
 import simpledb.common.DeadlockException;
+import simpledb.lock.Lock;
+import simpledb.lock.LockManager;
+import simpledb.lock.LockType;
+import simpledb.lock.PageLock;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
@@ -37,7 +41,8 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
 
     public int numPages;
-    private ConcurrentHashMap<Integer,Page> pages = null;
+    private ConcurrentHashMap<Integer,Page> pages;
+    private LockManager lockManager;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -47,6 +52,7 @@ public class BufferPool {
     public BufferPool(int numPages) {
         this.numPages = numPages;
         this.pages = new ConcurrentHashMap<>();
+        this.lockManager = new LockManager();
     }
 
     public static int getPageSize() {
@@ -81,6 +87,29 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
 
+        //获取当前页面的lock
+        //持有锁
+        //acquire lock 返回成功与否
+        //判断是否等待
+        PageLock pageLock = this.lockManager.getLock(pid);
+        synchronized (pageLock){
+            LockType lockType;
+            if (perm == Permissions.READ_ONLY){
+                lockType = LockType.SHARED_LOCK;
+            }else{
+                lockType = LockType.EXCLUSIVE_LOCK;
+            }
+            long start = System.currentTimeMillis();
+            long timeout = new Random().nextInt(2000);
+            boolean status = false;
+            if (!status){
+                long now = System.currentTimeMillis();
+                if (now - start > timeout) {
+                    throw new TransactionAbortedException();
+                }
+                status = lockManager.acquireLock(pageLock, new Lock(tid, lockType));
+            }
+        }
         if (!pages.containsKey(pid.hashCode())){
             DbFile file = Database.getCatalog().getDatabaseFile(pid.getTableId());
             while (pages.size() >= numPages){
@@ -103,8 +132,7 @@ public class BufferPool {
      * @param pid the ID of the page to unlock
      */
     public  void unsafeReleasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        this.lockManager.releaseLock(tid, pid);
     }
 
     /**
@@ -113,15 +141,13 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        transactionComplete(tid, true);
+
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
     public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for lab1|lab2
-        return false;
+        return this.lockManager.holdsLock(tid, p);
     }
 
     /**
@@ -132,8 +158,35 @@ public class BufferPool {
      * @param commit a flag indicating whether we should commit or abort
      */
     public void transactionComplete(TransactionId tid, boolean commit) {
-        // some code goes here
-        // not necessary for lab1|lab2
+        if (commit){
+            try {
+                flushPages(tid);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }else {
+            restorePages(tid);
+        }
+        releaseLock(tid);
+    }
+
+    private synchronized void releaseLock(TransactionId tid){
+        for (Integer pageId: pages.keySet()){
+            if(holdsLock(tid, pages.get(pageId).getId())){
+                lockManager.releaseLock(tid, pages.get(pageId).getId());
+            }
+        }
+    }
+
+    private void restorePages(TransactionId tid){
+        for (Integer pageId: pages.keySet()){
+            Page page = pages.get(pageId);
+            if (page.isDirty() == tid){
+                int tableId = page.getId().getTableId();
+                DbFile databaseFile = Database.getCatalog().getDatabaseFile(tableId);
+                pages.put(pageId, databaseFile.readPage(page.getId()));
+            }
+        }
     }
 
     /**
@@ -220,7 +273,10 @@ public class BufferPool {
      */
     private synchronized  void flushPage(PageId pid) throws IOException {
         Page page = pages.get(pid.hashCode());
-        if ((page.isDirty()) != null){
+        TransactionId dirtier = page.isDirty();
+        if (dirtier != null){
+            Database.getLogFile().logWrite(dirtier, page.getBeforeImage(), page);
+            Database.getLogFile().force();
             Database.getCatalog().getDatabaseFile(page.getId().getTableId()).writePage(page);
             page.markDirty(false , null);
         }
@@ -229,8 +285,13 @@ public class BufferPool {
     /** Write all pages of the specified transaction to disk.
      */
     public synchronized  void flushPages(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+        for (Integer pageId: pages.keySet()){
+            Page page = pages.get(pageId);
+            if (page.isDirty() == tid){
+                flushPage(page.getId());
+            }
+            page.setBeforeImage();
+        }
     }
 
     /**
@@ -238,15 +299,30 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized  void evictPage() throws DbException {
-        List<Integer> keys = new ArrayList<>(pages.keySet());
-        int random = keys.get(0);
-        PageId pid = pages.get(random).getId();
-        try {
-            flushPage(pid);
-        } catch (IOException e) {
-            e.printStackTrace();
+
+        Integer pageId = null;
+
+        for (Integer n : pages.keySet()){
+            Page page = pages.get(n);
+            if (page.isDirty() != null)
+                continue;
+
+            if (pageId == null){
+                try {
+                    flushPage(page.getId());
+                    discardPage(page.getId());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                return;
+            }
         }
-        discardPage(pid);
+
+        if (pageId == null){
+            throw new DbException("全部都是脏页");
+        }
+
+
     }
 
 }
